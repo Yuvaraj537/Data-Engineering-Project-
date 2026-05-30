@@ -1,83 +1,39 @@
-import requests
-import pandas as pd
-import time
+from flask import Flask, request
+import os
 
-# API URL
-url = "https://api.coingecko.com/api/v3/coins/markets"
+app = Flask(__name__)
 
-# Your API Key
-API_KEY = "CG-qYfkLdhGSR9m1KV5XuYa9JPL"
+@app.route("/", methods=["GET"])
+def health():
+    return "OK", 200
 
-# Headers
-headers = {
-    "accept": "application/json",
-    "x-cg-demo-api-key": API_KEY
-}
+@app.route("/", methods=["POST"])
+def ingest():
+    event = request.get_json(silent=True)
 
-# Store all data
-all_data = []
+    if not event:
+        return "Bad Request: no JSON body", 400
 
-# CoinGecko allows max 250 per page
-# 250 × 40 pages = 10,000 records
+    bucket = event.get("bucket")
+    name = event.get("name")
 
-for page in range(1, 41):
+    path_parts = name.split("/") if name else []
 
-    print(f"Downloading page {page}...")
+    # Example path: uploads/us/provider1/file.csv
+    zone = path_parts[1] if len(path_parts) > 1 else "unknown"
+    provider = path_parts[2] if len(path_parts) > 2 else "unknown"
+    file_name = path_parts[-1] if path_parts else "unknown"
 
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": 250,
-        "page": page,
-        "sparkline": False
-    }
+    print("File received")
+    print("Bucket:", bucket)
+    print("Zone:", zone)
+    print("Provider:", provider)
+    print("File path:", name)
+    print("File name:", file_name)
 
-    response = requests.get(url, params=params, headers=headers)
+    return "OK", 200
 
-    # Convert JSON
-    data = response.json()
 
-    # Stop if no data
-    if not data:
-        print("No more data available")
-        break
-
-    # Add to master list
-    all_data.extend(data)
-
-    # Avoid rate limit
-    time.sleep(2)
-
-# Convert to DataFrame
-df = pd.DataFrame(all_data)
-
-# Select important columns
-columns_needed = [
-    "id",
-    "symbol",
-    "name",
-    "current_price",
-    "market_cap",
-    "market_cap_rank",
-    "total_volume",
-    "high_24h",
-    "low_24h",
-    "price_change_24h",
-    "price_change_percentage_24h",
-    "circulating_supply",
-    "total_supply",
-    "max_supply",
-    "ath",
-    "atl"
-]
-
-# Keep only available columns
-df = df[[col for col in columns_needed if col in df.columns]]
-
-# Show total records
-print("Total Records:", len(df))
-
-# Save CSV
-df.to_csv("crypto_10000_records.csv", index=False)
-
-print("CSV saved successfully!")
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)

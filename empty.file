@@ -1,0 +1,114 @@
+gcloud eventarc triggers create gcs-file-trigger \
+  --locator europe-west1 \
+  --destination-run-service ingress-service \
+  --destination-run-region europe-west1 \
+  --event-filters="type=google.cloud.storage.object.v1.finalized" \
+  --event-filters="ps-gcp-ingress-bucket-7f3a" \
+  --service-account="$(gcloud projects describe $(gcloud config get-value 
+  project ) \
+  --format="value(projectNumber)")-compute@developer.gserviceaccount.com
+  
+
+
+curl -X POST \
+  -H "Content_Type: application/Json" \
+  -d '{
+         "bucket": "ps-gcp-ingress-bucket-7f3a"
+         "name": "zone1 /provider1/file.txt"
+
+      }' \
+ https://ingress-service-1087757767238.europe-west1.run.app
+
+
+
+ import apache_beam as apache_beam  
+ from apache_beam.options.pipeline_options import PipeleineOptions
+ import requests
+ from google.cloud import storage
+
+ # Configuration
+
+BUCKET_NAME = "ps-gcp-ingress-bucket-7f3a"
+
+TEMP_LOCATION=f"gs://{BUCKET_NAME}/temp"
+
+# list of Github files
+
+FILES_TO_COPY = [
+    {
+        "https://github.com/Yuvaraj537/Data-Engineering-Project-/blob/main/crypto_10000_records.csv"
+        "raw/crypto_10000_records.csv"
+    }
+
+]
+
+#Beam DoFns
+class DownloadGithubFile(beam.DoFn):
+    def process(self, element):
+        url, deest_blob=element
+        print(f"Downloading {url}...")
+        response = request.get(url)
+        response.raise_for-status()
+        yield (dest_blob,response.content)
+
+class WriteToGCS(beam.DOFN):
+  def process(self, element):
+      blob_name,data = element
+      client = storage.Client()
+      bucket = client.get_bucket(BUCKET_NAME)
+      blob = bucket.blob(blob_name)
+      blob.upload_from_string(data)
+      gcs_path = f"gs://{BUCKET_NAME}/{blob_name}"
+      print(f"Upload to {gcs_path}")
+      yield gcs_path
+
+#Pipeline Options
+
+Pipeline_Options = PipelinelineOptions(
+    runner = "DirectRunner",
+    project = "project-387ad332-118a-45d4-84f"
+    temp_location = TEMP_LOCATION
+)
+
+# Run the Pipeline
+with beam.Pipeline(options = Pipeline_options) as p:
+(
+    p
+    | "Create file list" >> beam.Create(FILES_TO_COPY)
+    | "Download from Github" >> beam.ParDO(DownloadGitHubFile())
+    | "Upload to GCS" >> beam.ParDO(WriteToGCS())
+)
+
+from google.cloud import storage
+BUCKET_NAME = "ps-gcp-ingress-bucket-7f3a"
+RAW_ROOT = "provider-ingress/raw/"
+BRONZE_ROOT = "provider-ingress/bronze/"
+def move_files():
+    client = storage.client()
+    bucket = client.bucket(BUCKET_NAME)
+    blobs = bucket.list_blobs(prefix=RAW_ROOT)
+    moved = 0
+    for blob in blobs:
+        name=blob.name
+        #Skip folder placeholders
+        if name.endswitch("/"):
+            continue
+        #Expected format
+        #provider-ingress/raw/<provider>/<file name>
+        parts = name.split("/")
+        if len(parts) <4:
+            print(f"Skipping unexpected path: {name}")
+            continue
+        provider = parts[2] #provider blob_name
+        filename = "/".join(parts[3:]) # Support subfolder if any
+        destination_name = f"{BRONZE_ROOT}{provider}/{filename}"
+        bucket.copy_blob(blob, bucket, destination_name)
+        print(f"Copied: {name} -> {destination_name}")
+        moved +=1 
+
+    print(f"\nTotal files moved: {moved}")
+
+if __name__ == " __main__":
+    move_files()
+
+
